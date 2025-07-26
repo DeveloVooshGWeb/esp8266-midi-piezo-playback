@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1,maximum-scale=1,minimum-scale=1,user-scalable=no">
+<link rel="stylesheet" href="/bootstrap/bootstrap.min.css" />
+<style>
+#buttonList {
+	display: block;
+	text-align: center;
+}
+
+#output {
+	width: 100%;
+	word-wrap: break-word;
+}
+
+#title {
+	text-align: center;
+}
+</style>
+<title>Wifi Buzzer - Midi To Buzzer Data Converter</title>
+</head>
+<body>
+<h1 id="title">Midi To Buzzer Data Converter</h1>
+<p id="output"></p>
+<input type="file" class="form-control-file" id="midiInput" />
+<div id="buttonList"></div>
+</body>
+<script src="/midi/Midi.js"></script>
+<script>
+let keyMapping = {"B0":31,"C1":33,"CS1":35,"D1":37,"DS1":39,"E1":41,"F1":44,"FS1":46,"G1":49,"GS1":52,"A1":55,"AS1":58,"B1":62,"C2":65,"CS2":69,"D2":73,"DS2":78,"E2":82,"F2":87,"FS2":93,"G2":98,"GS2":104,"A2":110,"AS2":117,"B2":123,"C3":131,"CS3":139,"D3":147,"DS3":156,"E3":165,"F3":175,"FS3":185,"G3":196,"GS3":208,"A3":220,"AS3":233,"B3":247,"C4":262,"CS4":277,"D4":294,"DS4":311,"E4":330,"F4":349,"FS4":370,"G4":392,"GS4":415,"A4":440,"AS4":466,"B4":494,"C5":523,"CS5":554,"D5":587,"DS5":622,"E5":659,"F5":698,"FS5":740,"G5":784,"GS5":831,"A5":880,"AS5":932,"B5":988,"C6":1047,"CS6":1109,"D6":1175,"DS6":1245,"E6":1319,"F6":1397,"FS6":1480,"G6":1568,"GS6":1661,"A6":1760,"AS6":1865,"B6":1976,"C7":2093,"CS7":2217,"D7":2349,"DS7":2489,"E7":2637,"F7":2794,"FS7":2960,"G7":3136,"GS7":3322,"A7":3520,"AS7":3729,"B7":3951,"C8":4186,"CS8":4435,"D8":4699,"DS8":4978};
+
+let midiFile = null;
+let midiTracks = [];
+
+function getMidi(arrayBuffer) {
+	try {
+		return new Midi(arrayBuffer);
+	} catch(e) {
+		return null;
+	}
+}
+
+let midiInput = document.querySelector("#midiInput");
+let buttonList = document.querySelector("#buttonList");
+let outputText = document.querySelector("#output");
+let titleText = document.querySelector("#title");
+
+let finalData = [];
+
+function destroyAllStructures() {
+	document.querySelectorAll("#buttonList button").forEach(child => {
+		child.removeEventListener("click", outputResult, false);
+		buttonList.removeChild(child);
+	});
+	
+	document.querySelectorAll("#buttonList br").forEach(child => {
+		buttonList.removeChild(child);
+	});
+	
+	document.body.removeChild(titleText);
+	titleText = null;
+}
+
+let buzzerDataHeader = new Uint8Array("0AD6D8FF".match(/.{1,2}/g).map(a => parseInt(a, 16)));
+
+function toByteArray(a, b) {
+	let c = []
+	for (d = 0; d < a.length; d++) {
+		for (e = 0; e < b; e++) {
+			let f = e * 8;
+			let g = (b - 1) * 8;
+			c.push(parseInt(a[d] << f >> g));
+		}
+	}
+	let h = new Uint8Array(c);
+	return h;
+}
+
+function finalFormat(a, b, c, d, e, f) {
+	a = new Uint32Array([parseInt(a)]);
+	b = new Uint16Array([parseInt(b)]);
+	c = new Uint16Array([parseInt(c)]);
+	
+	d = new Uint16Array(d);
+	e = new Uint16Array(e);
+	f = new Uint32Array(f);
+	
+	a = toByteArray(a, 4);
+	b = toByteArray(b, 2);
+	c = toByteArray(c, 2);
+	d = toByteArray(d, 2);
+	e = toByteArray(e, 2);
+	f = toByteArray(f, 4);
+	
+	let hL = buzzerDataHeader.length;
+	let aL = a.length;
+	let bL = b.length;
+	let cL = c.length;
+	let dL = d.length;
+	let eL = e.length;
+	let fL = f.length;
+	
+	let g = new Uint8Array(hL + aL + bL + cL + dL + eL + fL);
+	
+	g.set(buzzerDataHeader);
+	g.set(a, hL);
+	g.set(b, hL + aL);
+	g.set(c, hL + aL + bL);
+	g.set(d, hL + aL + bL + cL);
+	g.set(e, hL + aL + bL + cL + dL);
+	g.set(f, hL + aL + bL + cL + dL + eL);
+	
+	return g;
+}
+
+function formatSongData(track, passedSongData) {
+	let notes = track.notes;
+	let songLen = notes.length;
+	let songData = passedSongData == null ? { data: [], len: 0, ppq: 0, bpm: 0 } : passedSongData;
+	songData.len += songLen;
+	notes.forEach(note => {
+		let toPush = { notePitch: 0, noteDuration: 0, noteTime: 0 };
+		
+		let noteJson = note.toJSON();
+		let keyName = noteJson.name.replaceAll("#", "S");
+		
+		if (keyMapping.hasOwnProperty(keyName)) {
+			toPush.notePitch = keyMapping[keyName];
+		}
+		
+		toPush.noteDuration = noteJson.durationTicks;
+		toPush.noteTime = noteJson.ticks;
+		
+		songData.data.push(toPush);
+	});
+	return songData;
+}
+
+function encodeB64(a) {
+	try {
+		return btoa(a);
+	} catch(e) {
+		return a;
+	}
+}
+
+function byteArrayToBase64(a) {
+	let b = "";
+	for (c = 0; c < a.length; c++) {
+		b += String.fromCharCode(a[c]);
+	}
+	b = encodeB64(b);
+	return b;
+}
+
+function outputResult(evt) {
+	if (midiFile != null) {
+		destroyAllStructures();
+		
+		let ind = parseInt(evt.target.getAttribute("index"));
+		
+		let songData = { data: [], len: 0, ppq: 0, bpm: 0 };
+		
+		if (ind >= 0) {
+			let track = midiFile.tracks[ind];
+			songData = formatSongData(track);
+			
+			songData.ppq = Math.round(midiFile.header.ppq);
+			if (midiFile.header.tempos.length > 0) {
+				songData.bpm = Math.round(midiFile.header.tempos[0].bpm);
+			}
+		} else {
+			midiFile.tracks.forEach(track => {
+				songData = formatSongData(track, songData);
+			});
+			
+			songData.ppq = Math.round(midiFile.header.ppq);
+			if (midiFile.header.tempos.length > 0) {
+				songData.bpm = Math.round(midiFile.header.tempos[0].bpm);
+			}
+			
+			songData.data.sort((a, b) => a.noteTime - b.noteTime);
+		}
+		
+		let notes = [];
+		let durations = [];
+		let timings = [];
+		
+		for (i = 0; i < songData.data.length; i++) {
+			let songNote = songData.data[i];
+			notes.push(songNote.notePitch);
+			durations.push(songNote.noteDuration);
+			timings.push(songNote.noteTime);
+		}
+		
+		let byteArr = finalFormat(songData.len, songData.bpm, songData.ppq, notes, durations, timings);
+		let finalStr = byteArrayToBase64(byteArr);
+		
+		if (navigator.clipboard) {
+			navigator.clipboard.writeText(finalStr).then(() => {
+				outputText.textContent = finalStr;
+			}, function(err) {
+				outputText.textContent = finalStr;
+			});
+		} else {
+			outputText.textContent = finalStr;
+		}
+	}
+}
+
+function createTrackButtons() {
+	for (i = -1; i < midiTracks.length; i++) {
+		if (i < 0 || midiTracks[i] != "") {
+			let btn = document.createElement("button");
+			if (i >= 0) {
+				btn.textContent = "Track - " + midiTracks[i]
+			} else {
+				btn.textContent = "ALL TRACKS";
+				
+				buttonList.appendChild(document.createElement("br"));
+				buttonList.appendChild(document.createElement("br"));
+			}
+			
+			btn.setAttribute("index", i);
+			btn.setAttribute("class", "btn btn-outline-success");
+			
+			btn.addEventListener("click", outputResult, false);
+			
+			buttonList.appendChild(btn);
+			buttonList.appendChild(document.createElement("br"));
+			buttonList.appendChild(document.createElement("br"));
+		}
+	}
+}
+
+function onFile() {
+    let reader = new FileReader();
+    reader.onload = function() {
+        let arrayBuffer = this.result;
+		midiFile = getMidi(arrayBuffer);
+		if (midiFile != null) {
+			for (i = 0; i < midiFile.tracks.length; i++) {
+				let trackName = midiFile.tracks[i].name.trim();
+				midiFile.tracks[i].name = trackName;
+				midiTracks.push(trackName);
+			}
+			
+			midiInput.removeEventListener("change", onFile, false);
+			document.body.removeChild(midiInput);
+			
+			createTrackButtons();
+		} else {
+			midiTracks = [];
+		}
+    }
+    reader.readAsArrayBuffer(midiInput.files[0]);
+}
+
+midiInput.addEventListener("change", onFile, false);
+
+function update() {
+	let titleFontSize = (innerWidth / 2 + innerHeight) * 0.035;
+	let outputFontSize = (innerWidth / 2 + innerHeight) * 0.0105;
+	let inputSize = (innerWidth / 2 + innerHeight) * 0.0009;
+	
+	let fileInputWidth = midiInput.offsetWidth / 1.25;
+	let fileInputHeight = midiInput.offsetHeight / 1.25;
+
+	midiInput.style.transform = "scale(" + inputSize + "," + inputSize + ")";
+	midiInput.style.position = "absolute";
+	midiInput.style.left = ((innerWidth / 2) - (fileInputWidth / 2)) + "px";
+	midiInput.style.top = ((innerHeight / 2) - (fileInputHeight / 2)) + "px";
+	
+	outputText.style.fontSize = outputFontSize + "px";
+	outputText.style.position = "absolute";
+	outputText.style.top = "0px";
+	outputText.style.left = "0px";
+	
+	if (titleText != null) {
+		titleText.style.fontSize = titleFontSize + "px";
+	}
+	
+	let btnSize = (innerWidth / 2 + innerHeight) * 0.0009;
+	
+	document.querySelectorAll("button").forEach(btn => {
+		btn.style.transform = "scale(" + btnSize + "," + btnSize + ")";
+	});
+	
+	requestAnimationFrame(update);
+}
+
+update();
+</script>
+</html>

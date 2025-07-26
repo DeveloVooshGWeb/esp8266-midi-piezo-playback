@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1,maximum-scale=1,minimum-scale=1,user-scalable=no">
+<link rel="stylesheet" href="/bootstrap/bootstrap.min.css" />
+<style>
+body {
+	display: block;
+	text-align: center;
+}
+
+#input-group {
+	display: grid;
+	place-items: center;
+}
+
+input {
+	text-align: center;
+}
+</style>
+<title>Wifi Buzzer - Admin Panel</title>
+</head>
+<body>
+<h1 id="title">Admin Panel</h1>
+<br>
+<br>
+<div id="inputs">
+<div id="input-group">
+<label for="songName">Song Name:</label>
+<input type="text" class="form-control" id="songName" placeholder="..." maxlength="255" />
+</div>
+<br>
+<br>
+<div id="input-group">
+<label for="songFile">File Name:</label>
+<input type="text" class="form-control" id="songFile" placeholder="foobar" maxlength="255" />
+</div>
+<br>
+<br>
+<div id="input-group">
+<label for="buzzerData">Buzzer Data:</label>
+<input type="text" class="form-control" id="buzzerData" placeholder="CtbY/w" />
+</div>
+<br>
+<br>
+<div id="input-group">
+<button class="btn btn-outline-success" id="addButton">Add</button>
+</div>
+<br>
+<br>
+<div id="input-group">
+<button class="btn btn-outline-primary" id="converterButton">Converter</button>
+</div>
+</div>
+</body>
+<script>
+let titleText = document.querySelector("#title");
+let addButton = document.querySelector("#addButton");
+let converterButton = document.querySelector("#converterButton");
+
+let songName = document.querySelector("#songName");
+let songFile = document.querySelector("#songFile");
+let buzzerData = document.querySelector("#buzzerData");
+let inputsDiv = document.querySelector("#inputs");
+
+converterButton.addEventListener("click", () => {
+	window.location.href = "/converter";
+}, false);
+
+function stitchForRequest(a, b, c) {
+	let str = String.fromCharCode(a.length) + String.fromCharCode(b.length) + a + b + c;
+	let strLen = str.length;
+	let uint8Arrs = [];
+	let maxChunk = 512;
+	let divided = strLen / maxChunk;
+	divided = Math.floor(strLen / divided == 1 ? divided : divided + 1);
+	for (d = 0; d < divided; d++) {
+		let arrSize = (d + 1) * maxChunk;
+		arrSize = arrSize > strLen ? strLen - ((divided - 1) * maxChunk) : maxChunk;
+		let rawArr = [];
+		for (i = 0; i < arrSize; i++) {
+			rawArr.push(str.charCodeAt((d * maxChunk) + i));
+		}
+		uint8Arrs.push(new Uint8Array(rawArr));
+	}
+	return [uint8Arrs, strLen];
+}
+
+function isBase64(inp) {
+	try {
+		atob(inp);
+		return inp.trim() != "";
+	} catch(e) {
+		return false;
+	}
+}
+
+function generateJunk(a) {
+	let b = "";
+	for (i = 0; i < a; i++) {
+		b += String.fromCharCode(Math.floor(Math.random() * 256));
+	}
+	return b;
+}
+
+let curArr = 0;
+let arrData = [];
+let sendInterval = 0;
+let continueIterating = false;
+let arrId = "";
+
+function sendReq(toSendArr) {
+	clearInterval(sendInterval);
+	curArr = 0;
+	arrData = toSendArr;
+	arrId = generateJunk(16);
+	continueIterating = true;
+	sendInterval = setInterval(() => {
+		if (continueIterating) {
+			continueIterating = false;
+			if (curArr < arrData[0].length) {
+				try {
+					let xhr = new XMLHttpRequest();
+					xhr.onreadystatechange = function() {
+						if (xhr.readyState == 4) {
+							if (xhr.status == 200)
+								console.log(xhr.responseText);
+							curArr++;
+							titleText.textContent = "Sent Chunk " + curArr + "...";
+							continueIterating = true;
+						}
+					}
+					xhr.open("POST", "/add");
+					xhr.setRequestHeader("Buzzer-Data-Length", arrData[1]);
+					xhr.setRequestHeader("Buzzer-Data-Position", curArr);
+					xhr.setRequestHeader("Request-Id", arrId);
+					xhr.setRequestHeader("Content-Type", "application/octet-stream");
+					xhr.send(arrData[0][curArr]);
+				} catch (e) {
+					console.error(e);
+					curArr++;
+					titleText.textContent = "Error Sending Chunk " + curArr + "...";
+					continueIterating = true;
+				}
+			} else {
+				clearInterval(sendInterval);
+				titleText.textContent = "Finished Adding Song!";
+				window.location.href = "/admin";
+			}
+		}
+	}, 1);
+}
+
+function sendData() {
+	let buzzerDataValue = buzzerData.value;
+	
+	if (isBase64(buzzerDataValue)) {
+		let toSendArr = stitchForRequest(songName.value, songFile.value, atob(buzzerDataValue));
+		
+		document.body.removeChild(inputsDiv);
+		titleText.textContent = "Adding Songs...";
+		
+		sendReq(toSendArr);
+	}
+}
+
+addButton.addEventListener("click", sendData, false);
+
+function update() {
+	let titleFontSize = (innerWidth / 2 + innerHeight) * 0.035;
+	let smallFontSize = (innerWidth / 2 + innerHeight) * 0.015;
+	let inputSize = (innerWidth / 2 + innerHeight) * 0.01;
+	let labelSize = (innerWidth / 2 + innerHeight) * 0.020;
+	
+	if (titleText != null) {
+		titleText.style.fontSize = titleFontSize + "px";
+	}
+	
+	let btnSize = (innerWidth / 2 + innerHeight) * 0.0009;
+	
+	document.querySelectorAll("button").forEach(btn => {
+		btn.style.transform = "scale(" + btnSize + "," + btnSize + ")";
+	});
+	
+	document.querySelectorAll("p").forEach(p => {
+		p.style.fontSize = smallFontSize + "px";
+	});
+	
+	document.querySelectorAll("input").forEach(input => {
+		input.style.fontSize = smallFontSize + "px";
+		let num = 32;
+		num += (input.getAttribute("id") == "buzzerData") * 32;
+		input.style.width = (inputSize * num) + "px";
+	});
+	
+	document.querySelectorAll("label").forEach(label => {
+		label.style.fontSize = labelSize + "px";
+	});
+	
+	let inputsWidth = inputsDiv != null ? inputsDiv.scrollWidth : 0;
+	
+	document.querySelectorAll("#input-group").forEach(inputGroup => {
+		inputGroup.style.position = "relative";
+		inputGroup.style.left = Math.floor(inputsWidth / 2 - inputGroup.scrollWidth / 2) + "px";
+	});
+	
+	requestAnimationFrame(update);
+}
+
+update();
+</script>
+</html>

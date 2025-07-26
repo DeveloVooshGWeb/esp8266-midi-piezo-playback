@@ -1,0 +1,4 @@
+Step 1. Create A File Specifically Named "wifi.credentials" Not A "txt" File
+Step 2. Write The Wifi Name On The First Line And The Wifi Password On The Second Line
+Step 3. Run The JS File With Node.JS (There Is An EXE And A Bat File Included)
+Step 4. Delete The Credentials File So No One Can Steal Your Kneecaps

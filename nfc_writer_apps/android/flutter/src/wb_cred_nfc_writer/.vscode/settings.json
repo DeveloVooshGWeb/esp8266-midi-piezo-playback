@@ -1,0 +1,8 @@
+{
+    "terminal.integrated.fontSize": 10,
+    "dart.hotReloadOnSave": "always",
+    "dart.flutterHotReloadOnSave": "always",
+    "dart.previewHotReloadOnSaveWatcher": false,
+    "files.autoSaveDelay": 500,
+    "files.autoSave": "off"
+}

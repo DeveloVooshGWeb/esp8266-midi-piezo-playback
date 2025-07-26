@@ -1,0 +1,477 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1,maximum-scale=1,minimum-scale=1,user-scalable=no">
+<link rel="stylesheet" href="/bootstrap/bootstrap.min.css" />
+<style>
+::-webkit-scrollbar {
+  width: 1vw;
+}
+
+::-webkit-scrollbar-track {
+  background: #e1e1e1;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #aaaaaa;
+  border-radius: 100vw;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #99aa99;
+}
+
+body {
+	display: block;
+	text-align: center;
+}
+
+#controls {
+	display: flex;
+	justify-content: space-evenly;
+}
+
+#timeIndicator {
+	position: relative;
+	top: 0px;
+	left: 0px;
+}
+
+#input-group {
+	display: grid;
+	place-items: center;
+}
+
+input {
+	text-align: center;
+}
+</style>
+<title>Wifi Buzzer - Admin Panel</title>
+</head>
+<body>
+<h1 id="timeIndicator">00:00:00 / 00:00:00</h1>
+<br>
+<br>
+<h1 id="title">Admin Panel</h1>
+<br>
+<br>
+<div id="input-group">
+<label for="timeInput">Time</label>
+<input type="text" class="form-control" id="timeInput" placeholder="00:00:00.000" maxlength="12" />
+</div>
+<br>
+<br>
+<div id="input-group">
+<label for="dmInput">Note Duration Multiplier (In Percent):</label>
+<input type="text" class="form-control" id="dmInput" placeholder="100" maxlength="3" />
+</div>
+<br>
+<br>
+<div id="controls">
+<button class="btn btn-danger" id="deleteButton">Delete</button>
+<button class="btn btn-success" id="addButton">Add</button>
+</div>
+<br>
+<div id="controls">
+<button class="btn btn-outline-danger" id="pauseButton">Pause</button>
+<button class="btn btn-outline-success" id="playButton">Play</button>
+</div>
+<br>
+<div id="controls">
+<button class="btn btn-outline-primary" id="loopOffButton">Loop Off</button>
+<button class="btn btn-outline-primary" id="loopOnButton">Loop On</button>
+</div>
+<br>
+<div id="controls">
+<button class="btn btn-outline-secondary" id="skipBackButton">Skip Back 5 Seconds</button>
+<button class="btn btn-outline-secondary" id="skipForwardButton">Skip Forward 5 Seconds</button>
+</div>
+<br>
+<div id="controls">
+<button class="btn btn-outline-primary" id="restartButton">Restart</button>
+<button class="btn btn-outline-primary" id="setTimeButton">Set Time</button>
+</div>
+<br>
+<div id="controls">
+<button class="btn btn-outline-dark" id="loadButton">Load</button>
+</div>
+<br>
+<div id="controls">
+<button class="btn btn-outline-secondary" id="setDMButton">Set Duration Multiplier</button>
+</div>
+<br>
+<br>
+<br>
+<br>
+<div id="songs"></div>
+</body>
+<script>
+let timeIndicator = document.querySelector("#timeIndicator");
+let titleText = document.querySelector("#title");
+let songsDiv = document.querySelector("#songs");
+
+let controlButtons = [
+	document.querySelector("#addButton"),
+	document.querySelector("#deleteButton"),
+	document.querySelector("#loopOnButton"),
+	document.querySelector("#loopOffButton"),
+	document.querySelector("#skipForwardButton"),
+	document.querySelector("#skipBackButton"),
+	document.querySelector("#setTimeButton"),
+	document.querySelector("#playButton"),
+	document.querySelector("#pauseButton"),
+	document.querySelector("#restartButton"),
+	document.querySelector("#loadButton"),
+	document.querySelector("#setDMButton")
+];
+
+let timeInput = document.querySelector("#timeInput");
+let dmInput = document.querySelector("#dmInput");
+
+let songs = [];
+let prevSongs = [];
+
+let curSelected = -1;
+let curName = "";
+let curTime = 0;
+
+function sendGet(path, data, headers, cb) {
+	try {
+		let xhr = new XMLHttpRequest();
+		xhr.onreadystatechange = function() {
+			if (xhr.readyState == 4) {
+				if (xhr.status == 200) {
+					if (cb != null) cb(true, xhr.responseText);
+				} else {
+					if (cb != null) cb(false, xhr.responseText);
+				}
+			}
+		}
+		xhr.open("GET", path);
+		let keys = Object.keys(headers);
+		for (key in keys) {
+			xhr.setRequestHeader(key, headers[key]);
+		}
+		xhr.send(data);
+	} catch(e) {
+		if (cb != null) cb(false, "");
+	}
+}
+
+function sendPost(path, data, headers, cb) {
+	try {
+		let xhr = new XMLHttpRequest();
+		xhr.onreadystatechange = function() {
+			if (xhr.readyState == 4) {
+				if (xhr.status == 200) {
+					if (cb != null) cb(true, xhr.responseText);
+				} else {
+					if (cb != null) cb(false, xhr.responseText);
+				}
+			}
+		}
+		xhr.open("POST", path);
+		let keys = Object.keys(headers);
+		for (key in keys) {
+			xhr.setRequestHeader(key, headers[key]);
+		}
+		xhr.send(data);
+	} catch(e) {
+		if (cb != null) cb(false, "");
+	}
+}
+
+function msToBin(a) {
+	return new Uint8Array([a >>> 24, a << 8 >>> 24, a << 16 >>> 24, a << 24 >>> 24]);
+}
+
+function msToStr(a) {
+	let b = a / 1000n;
+	let c = b / 60n;
+	let d = c / 60n;
+	
+	c -= d * 60n;
+	b -= (c * 60n) + (d * 60n * 60n);
+	
+	let e = b.toString();
+	let f = c.toString();
+	let g = d.toString();
+	
+	if (g.length < 2) g = "0" + g;
+	if (f.length < 2) f = "0" + f;
+	if (e.length < 2) e = "0" + e;
+	
+	let h = `${g}:${f}:${e}`;
+	let i = h.split("");
+	
+	while (i.length > 16) i.pop();
+	
+	h = i.join("");
+	
+	return h;
+}
+
+function strToMs(a) {
+	let b = a.split(":");
+	let c = parseInt(b[0]);
+	let d = parseInt(b[1]);
+	let e = parseFloat(b[2]);
+	let f = Math.floor((c * 60 * 60 * 1000) + (d * 60 * 1000) + (e * 1000));
+	
+	return f;
+}
+
+controlButtons[0].addEventListener("click", () => {
+	window.location.href = "/add";
+}, false);
+
+controlButtons[1].addEventListener("click", () => {
+	if (songs.length > 0 && curSelected >= 0 && curSelected < songs.length) {
+		sendPost("/delete", songs[curSelected], {}, null);
+	} else {
+		notSelected();
+	}
+}, false);
+
+controlButtons[2].addEventListener("click", () => {
+	if (songs.length > 0 && curSelected >= 0 && curSelected < songs.length) {
+		sendPost("/loop", new Uint8Array([255]), { "Content-Type": "application/octet-stream" }, null);
+	}
+}, false);
+
+controlButtons[3].addEventListener("click", () => {
+	if (songs.length > 0 && curSelected >= 0 && curSelected < songs.length) {
+		sendPost("/loop", new Uint8Array([0]), { "Content-Type": "application/octet-stream" }, null);
+	} else {
+		notSelected();
+	}
+}, false);
+
+controlButtons[4].addEventListener("click", () => {
+	if (songs.length > 0 && curSelected >= 0 && curSelected < songs.length) {
+		sendPost("/skipForward5", null, {}, null);
+	} else {
+		notSelected();
+	}
+}, false);
+
+controlButtons[5].addEventListener("click", () => {
+	if (songs.length > 0 && curSelected >= 0 && curSelected < songs.length) {
+		sendPost("/skipBack5", null, {}, null);
+	} else {
+		notSelected();
+	}
+}, false);
+
+let curTimeVal = "";
+let prevTimeVal = "";
+
+controlButtons[6].addEventListener("click", () => {
+	if (songs.length > 0 && curSelected >= 0 && curSelected < songs.length) {
+		if (curTimeVal.length >= 8 && curTimeVal.split(":").length == 3) {
+			sendPost("/setTime", msToBin(strToMs(curTimeVal)), { "Content-Type": "application/octet-stream" }, null);
+			timeInput.value = "";
+		} else {
+			timeInput.style.color = "red";
+		}
+	} else {
+		notSelected();
+	}
+}, false);
+
+controlButtons[7].addEventListener("click", () => {
+	if (songs.length > 0 && curSelected >= 0 && curSelected < songs.length) {
+		sendPost("/play", null, {}, null);
+	} else {
+		notSelected();
+	}
+}, false);
+
+controlButtons[8].addEventListener("click", () => {
+	if (songs.length > 0 && curSelected >= 0 && curSelected < songs.length) {
+		sendPost("/pause", null, {}, null);
+	} else {
+		notSelected();
+	}
+}, false);
+
+controlButtons[9].addEventListener("click", () => {
+	if (songs.length > 0 && curSelected >= 0 && curSelected < songs.length) {
+		sendPost("/restart", null, {}, null);
+	} else {
+		notSelected();
+	}
+}, false);
+
+controlButtons[10].addEventListener("click", () => {
+	if (songs.length > 0 && curSelected >= 0 && curSelected < songs.length) {
+		sendPost("/load", songs[curSelected], { "Content-Type": "application/octet-stream" }, null);
+	} else {
+		notSelected();
+	}
+}, false);
+
+controlButtons[11].addEventListener("click", () => {
+	if (songs.length > 0 && curSelected >= 0 && curSelected < songs.length) {
+		if (dmInput.value.trim().length <= 0 || parseInt(dmInput.value) > 100) dmInput.value = "100";
+		sendPost("/setDurationMultiplier", new Uint8Array([parseInt(dmInput.value)]), { "Content-Type": "application/octet-stream" }, null);
+		dmInput.value = "";
+	} else {
+		notSelected();
+	}
+}, false);
+
+let continueUpdatingSongs = true;
+
+function updateSongButtons(songNames) {
+	songsDiv.innerHTML = "";
+	
+	for (i = 0; i < songNames.length; i++) {
+		let pEle = document.createElement("p");
+		let btnEle = document.createElement("button");
+		
+		pEle.textContent = songNames[i];
+		
+		btnEle.setAttribute("class", "btn btn-outline-success");
+		btnEle.setAttribute("song-index", i);
+		btnEle.textContent = "Select";
+		
+		btnEle.addEventListener("click", () => {
+			curSelected = parseInt(btnEle.getAttribute("song-index"));
+		}, false);
+		
+		songsDiv.appendChild(pEle);
+		songsDiv.appendChild(btnEle);
+		songsDiv.appendChild(document.createElement("br"));
+		songsDiv.appendChild(document.createElement("br"));
+		songsDiv.appendChild(document.createElement("br"));
+		songsDiv.appendChild(document.createElement("br"));
+	}
+}
+
+function parseSongList(a) {
+	let j = [];
+	let k = [];
+	
+	let b = a.split("\n");
+	b = b.filter(c => c.trim() != "");
+	
+	for (c = 0; c < b.length; c++) {
+		let d = b[c];
+		let e = d.length;
+		let numOffset = 1;
+		if (e >= numOffset) {
+			let f = d.charCodeAt(0);
+			
+			if (e >= numOffset + f) {
+				let g = d.substring(numOffset, numOffset + f);
+				let h = d.substring(numOffset + f, e);
+				
+				j.push(g);
+				k.push(h);
+			}
+		}
+	}
+	
+	return [j, k];
+}
+
+function updateSongs() {
+	let prevSongs = songs;
+	sendGet("/list", null, {}, (a, b) => {
+		if (a) {
+			let songsNV = parseSongList(b);
+			songs = songsNV[1];
+			if (JSON.stringify(songs) != JSON.stringify(prevSongs)) updateSongButtons(songsNV[0]);
+			prevSongs = songs;
+		}
+		
+		continueUpdatingSongs = true;
+	});
+}
+
+updateSongs();
+
+setInterval(() => {
+	if (continueUpdatingSongs) {
+		continueUpdatingSongs = false;
+		requestAnimationFrame(updateSongs);
+	}
+}, 3000);
+
+let continueUpdatingTime = true;
+
+setInterval(() => {
+	if (continueUpdatingTime) {
+		continueUpdatingTime = false;
+		sendGet("/time", null, {}, (a, b) => {
+			if (a) {
+				if (b.length >= 3) {
+					let c = b.split(" ");
+					
+					if (c.length == 2) {
+						let d = BigInt(c[0]);
+						let e = BigInt(c[1]);
+						
+						if (d > e) d = e;
+						
+						let f = msToStr(d);
+						let g = msToStr(e);
+						
+						f = f.substring(0, 8);
+						g = g.substring(0, 8);
+						
+						timeIndicator.textContent = f + " / " + g;
+					}
+				}
+			}
+			
+			continueUpdatingTime = true;
+		});
+	}
+}, 100);
+
+function update() {
+	let titleFontSize = (innerWidth / 2 + innerHeight) * 0.035;
+	let smallFontSize = (innerWidth / 2 + innerHeight) * 0.015;
+	let bigFontSize = (innerWidth / 2 + innerHeight) * 0.025;
+	let inputSize = (innerWidth / 2 + innerHeight) * 0.01;
+	let labelSize = (innerWidth / 2 + innerHeight) * 0.020;
+	
+	timeIndicator.style.fontSize = bigFontSize + "px";
+	
+	if (titleText != null) {
+		titleText.style.fontSize = titleFontSize + "px";
+	}
+	
+	let btnSize = (innerWidth / 2 + innerHeight) * 0.0009;
+	
+	document.querySelectorAll("button").forEach(btn => {
+		btn.style.transform = "scale(" + btnSize + "," + btnSize + ")";
+	});
+	
+	document.querySelectorAll("p").forEach(p => {
+		p.style.fontSize = smallFontSize + "px";
+	});
+	
+	document.querySelectorAll("input").forEach(input => {
+		let multiplier = input.getAttribute("id") == "dmInput" ? 8 : 32;
+		
+		input.style.fontSize = smallFontSize + "px";
+		input.style.width = (inputSize * multiplier) + "px";
+	});
+	
+	document.querySelectorAll("label").forEach(label => {
+		label.style.fontSize = labelSize + "px";
+	});
+	
+	curTimeVal = timeInput.value;
+	if (curTimeVal != prevTimeVal) timeInput.style.color = "black";
+	prevTimeVal = curTimeVal;
+	
+	requestAnimationFrame(update);
+}
+
+update();
+</script>
+</html>

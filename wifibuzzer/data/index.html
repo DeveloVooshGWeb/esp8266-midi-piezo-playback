@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1,maximum-scale=1,minimum-scale=1,user-scalable=no">
+<link rel="stylesheet" href="/bootstrap/bootstrap.min.css" />
+<style>
+body {
+	display: block;
+	text-align: center;
+}
+</style>
+<title>Wifi Buzzer</title>
+</head>
+<body>
+<h1 id="title">Wifi Buzzer</h1>
+<p id="caption">You Can Play The Buzzer/Piezo Live (Tool Still In Progress)</p>
+<br>
+<br>
+<button class="btn btn-success" id="panelBtn">Admin Panel</button>
+</body>
+<script>
+let titleText = document.querySelector("#title");
+let captionText = document.querySelector("#caption");
+let panelBtn = document.querySelector("#panelBtn");
+
+panelBtn.addEventListener("click", () => {
+	window.location.href = "/admin";
+}, false);
+
+function update() {
+	let titleFontSize = (innerWidth / 2 + innerHeight) * 0.045;
+	let smallFontSize = (innerWidth / 2 + innerHeight) * 0.015;
+	
+	titleText.style.fontSize = titleFontSize + "px";
+	captionText.style.fontSize = smallFontSize + "px";
+	
+	let btnSize = (innerWidth / 2 + innerHeight) * 0.001;
+	panelBtn.style.transform = "scale(" + btnSize + "," + btnSize + ")";
+	
+	requestAnimationFrame(update);
+}
+
+update();
+</script>
+</html>
